@@ -1,0 +1,603 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI 魔法圣诞树 (永久保存版)</title>
+    
+    <!-- 引入 AI 模型库 -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-webgl"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/hand-pose-detection"></script>
+
+    <!-- 引入节日字体 -->
+    <link href="https://fonts.googleapis.com/css2?family=Mountains+of+Christmas:wght@700&family=Noto+Sans+SC:wght@400;700&display=swap" rel="stylesheet">
+
+    <style>
+        body { 
+            margin: 0; 
+            overflow: hidden; 
+            background: radial-gradient(circle at center bottom, #1a2a3a 0%, #000000 100%); 
+            font-family: 'Noto Sans SC', sans-serif; 
+            color: white; 
+        }
+        
+        canvas { display: block; position: absolute; top: 0; left: 0; z-index: 1; }
+        
+        /* UI 层样式 */
+        #ui-layer { 
+            position: relative; 
+            z-index: 10; 
+            padding: 20px; 
+            display: flex; 
+            flex-direction: column; 
+            align-items: center; 
+            pointer-events: none; 
+            height: 100vh;
+            justify-content: space-between;
+        }
+        #ui-layer * { pointer-events: auto; }
+
+        h1 { 
+            font-family: 'Mountains of Christmas', cursive; 
+            font-size: 3.5rem;
+            color: #ffda79;
+            text-shadow: 0 0 10px rgba(255, 218, 121, 0.6), 0 2px 5px black;
+            margin: 10px 0; 
+            letter-spacing: 2px;
+        }
+
+        .controls { 
+            background: rgba(255, 255, 255, 0.1); 
+            padding: 15px 30px; 
+            border-radius: 20px; 
+            backdrop-filter: blur(10px); 
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            text-align: center; 
+            display: flex; 
+            gap: 15px; 
+            align-items: center; 
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            margin-bottom: auto;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        .btn { 
+            background: linear-gradient(135deg, #e74c3c, #c0392b); 
+            color: white; 
+            padding: 10px 20px; 
+            border-radius: 50px; 
+            cursor: pointer; 
+            font-weight: bold; 
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            transition: 0.3s; 
+            box-shadow: 0 4px 15px rgba(231, 76, 60, 0.4);
+            border: none;
+            font-size: 0.9rem;
+        }
+        .btn:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(231, 76, 60, 0.6); }
+        .btn-music { background: linear-gradient(135deg, #f1c40f, #f39c12); color: #333; }
+        .btn-clear { background: linear-gradient(135deg, #7f8c8d, #2c3e50); font-size: 0.8rem; padding: 8px 15px; }
+        
+        #file-input { display: none; }
+        
+        #status-panel {
+            background: rgba(0,0,0,0.6);
+            padding: 10px 20px;
+            border-radius: 10px;
+            font-size: 14px;
+            color: #ddd;
+            display: flex;
+            gap: 15px;
+            align-items: center;
+        }
+        #status-panel strong { color: #2ecc71; font-size: 16px; }
+
+        #video-container { 
+            position: absolute; bottom: 20px; right: 20px; 
+            width: 180px; height: 135px; 
+            border: 3px solid rgba(255,255,255,0.3); 
+            border-radius: 12px; overflow: hidden; 
+            z-index: 20; background: #000; 
+            box-shadow: 0 5px 15px rgba(0,0,0,0.5);
+        }
+        video { width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }
+
+        #loading { 
+            position: fixed; top: 50%; left: 50%; 
+            transform: translate(-50%, -50%); 
+            background: rgba(0,0,0,0.85); 
+            padding: 30px; 
+            border-radius: 15px; 
+            z-index: 100; 
+            font-size: 22px; 
+            color: #fff;
+            display: flex; flex-direction: column; align-items: center; gap: 15px;
+        }
+        .spinner {
+            width: 40px; height: 40px;
+            border: 4px solid #fff; border-top: 4px solid #e74c3c;
+            border-radius: 50%; animation: spin 1s linear infinite;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+        #magnify-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.9); z-index: 50; display: none;
+            justify-content: center; align-items: center; flex-direction: column;
+        }
+        #magnify-img {
+            max-width: 85%; max-height: 80%;
+            border: 10px solid #fff; border-bottom: 40px solid #fff;
+            box-shadow: 0 0 50px rgba(255,255,255,0.2); border-radius: 4px;
+        }
+        #magnify-hint { margin-top: 20px; color: #aaa; font-size: 14px; }
+
+        .music-bars { display: flex; gap: 3px; height: 15px; align-items: flex-end; }
+        .bar { width: 3px; background: #333; animation: sound 0s infinite ease-in-out alternate; }
+        .playing .bar { animation-duration: 0.4s; }
+        .playing .bar:nth-child(2) { animation-duration: 0.6s; }
+        .playing .bar:nth-child(3) { animation-duration: 0.8s; }
+        @keyframes sound { 0% { height: 3px; } 100% { height: 15px; } }
+
+    </style>
+</head>
+<body>
+
+    <canvas id="canvas"></canvas>
+
+    <div id="ui-layer">
+        <div>
+            <h1>🎄 AI 魔法圣诞树</h1>
+            <div class="controls">
+                <label class="btn">
+                    📷 添加照片
+                    <input type="file" id="file-input" multiple accept="image/*">
+                </label>
+                
+                <button class="btn btn-music" id="btn-music" onclick="toggleMusic()">
+                    <div class="music-bars" id="music-bars">
+                        <div class="bar"></div><div class="bar"></div><div class="bar"></div>
+                    </div>
+                    音乐
+                </button>
+
+                <button class="btn btn-clear" onclick="clearDB()">
+                    🗑️ 清除存档
+                </button>
+                
+                <div id="status-panel">
+                    <span>数量: <span id="item-count">0</span></span>
+                    <span>|</span>
+                    <span>状态: <strong id="gesture-state">加载中...</strong></span>
+                </div>
+            </div>
+        </div>
+        
+        <div style="font-size: 12px; opacity: 0.6; margin-bottom: 10px;">
+            提示：照片已自动保存。对着摄像头 ✊ 握拳聚合成树，✋ 张开手掌散开照片
+        </div>
+    </div>
+
+    <div id="video-container">
+        <video id="video" playsinline autoplay muted></video>
+    </div>
+
+    <div id="magnify-overlay">
+        <img id="magnify-img" src="">
+        <div id="magnify-hint">点击任意处关闭</div>
+    </div>
+
+    <div id="loading">
+        <div class="spinner"></div>
+        <div>正在读取记忆 & 召唤 AI...</div>
+    </div>
+
+    <audio id="bgm" loop>
+        <source src="https://cdn.pixabay.com/download/audio/2022/11/22/audio_febc508520.mp3?filename=christmas-background-music-124970.mp3" type="audio/mpeg">
+    </audio>
+
+    <script>
+        // --- 1. 数据库配置 (IndexedDB) ---
+        const DB_NAME = 'XmasTreeDB';
+        const STORE_NAME = 'photos';
+        let db;
+
+        // 初始化数据库
+        function initDB() {
+            return new Promise((resolve, reject) => {
+                const request = indexedDB.open(DB_NAME, 1);
+                request.onupgradeneeded = (event) => {
+                    db = event.target.result;
+                    if (!db.objectStoreNames.contains(STORE_NAME)) {
+                        db.createObjectStore(STORE_NAME, { autoIncrement: true });
+                    }
+                };
+                request.onsuccess = (event) => {
+                    db = event.target.result;
+                    resolve(db);
+                };
+                request.onerror = (event) => {
+                    console.error("Database error: ", event.target.errorCode);
+                    reject("DB Error");
+                };
+            });
+        }
+
+        // 保存文件到数据库
+        function saveToDB(file) {
+            if(!db) return;
+            const transaction = db.transaction([STORE_NAME], "readwrite");
+            const store = transaction.objectStore(STORE_NAME);
+            store.add(file);
+        }
+
+        // 从数据库加载所有照片
+        function loadFromDB() {
+            return new Promise((resolve) => {
+                if(!db) resolve([]);
+                const transaction = db.transaction([STORE_NAME], "readonly");
+                const store = transaction.objectStore(STORE_NAME);
+                const request = store.getAll();
+                request.onsuccess = () => {
+                    resolve(request.result);
+                };
+            });
+        }
+
+        // 清除数据库
+        function clearDB() {
+            if(confirm('确定要清除所有保存的照片吗？')) {
+                const transaction = db.transaction([STORE_NAME], "readwrite");
+                const store = transaction.objectStore(STORE_NAME);
+                const req = store.clear();
+                req.onsuccess = () => {
+                    alert('存档已清除，请刷新页面重新开始！');
+                    location.reload();
+                };
+            }
+        }
+
+        // --- 2. 核心逻辑 ---
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const video = document.getElementById('video');
+        const gestureStateEl = document.getElementById('gesture-state');
+        const itemCountEl = document.getElementById('item-count');
+        const loadingEl = document.getElementById('loading');
+        const magnifyOverlay = document.getElementById('magnify-overlay');
+        const magnifyImg = document.getElementById('magnify-img');
+        const bgm = document.getElementById('bgm');
+        const musicBtn = document.getElementById('btn-music');
+
+        bgm.volume = 0.5;
+        
+        let detector;
+        let items = [];
+        let snowflakes = [];
+        let mode = 'tree';
+        let magnifiedItem = null;
+
+        const PHOTO_SIZE = 55;
+        const DECORATION_COUNT = 40; 
+        const SPEED_FACTOR = 0.08;
+        const SNOW_COUNT = 150;
+
+        // --- 雪花系统 ---
+        class Snowflake {
+            constructor() { this.reset(); }
+            reset() {
+                this.x = Math.random() * canvas.width;
+                this.y = Math.random() * -canvas.height;
+                this.size = Math.random() * 3 + 1;
+                this.speed = Math.random() * 1 + 0.5;
+                this.opacity = Math.random() * 0.5 + 0.3;
+                this.sway = Math.random() * 0.02 - 0.01;
+            }
+            update() {
+                this.y += this.speed;
+                this.x += Math.sin(this.y * 0.01) + this.sway;
+                if (this.y > canvas.height) this.reset();
+            }
+            draw() {
+                ctx.fillStyle = `rgba(255, 255, 255, ${this.opacity})`;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        function initSnow() {
+            snowflakes = [];
+            for (let i = 0; i < SNOW_COUNT; i++) snowflakes.push(new Snowflake());
+        }
+
+        // --- 辅助函数 ---
+        function lerp(start, end, factor) { return start + (end - start) * factor; }
+        function shuffleArray(array) {
+            for (let i = array.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [array[i], array[j]] = [array[j], array[i]];
+            }
+            return array;
+        }
+        function getBrightness(img) {
+            const c = document.createElement('canvas'); c.width = 1; c.height = 1;
+            const cx = c.getContext('2d'); cx.drawImage(img, 0, 0, 1, 1);
+            const data = cx.getImageData(0, 0, 1, 1).data;
+            return (data[0] * 0.299 + data[1] * 0.587 + data[2] * 0.114);
+        }
+        function toggleMusic() {
+            if (bgm.paused) {
+                bgm.play().then(() => {
+                    musicBtn.innerHTML = '<div class="music-bars playing"><div class="bar"></div><div class="bar"></div><div class="bar"></div></div> 暂停';
+                }).catch(e => alert("点击页面后再试"));
+            } else {
+                bgm.pause();
+                musicBtn.innerHTML = '<div class="music-bars"><div class="bar"></div><div class="bar"></div><div class="bar"></div></div> 音乐';
+            }
+        }
+
+        // --- 绘制函数 ---
+        function drawTrunk(width, height) {
+            const trunkWidth = width * 0.06;
+            const trunkHeight = height * 0.18;
+            const x = width / 2 - trunkWidth / 2;
+            const y = height * 0.85;
+            const gradient = ctx.createLinearGradient(x, y, x + trunkWidth, y);
+            gradient.addColorStop(0, '#3e2723'); gradient.addColorStop(0.5, '#5d4037'); gradient.addColorStop(1, '#3e2723');
+            ctx.fillStyle = gradient;
+            ctx.beginPath();
+            ctx.moveTo(x + 5, y); ctx.lineTo(x + trunkWidth - 5, y); 
+            ctx.lineTo(x + trunkWidth + 15, y + trunkHeight); ctx.lineTo(x - 15, y + trunkHeight); 
+            ctx.closePath(); ctx.fill();
+        }
+
+        function drawTopStar(width, height) {
+            if (mode !== 'tree' || items.length === 0) return;
+            const topY = height * 0.15;
+            const x = width / 2;
+            const y = topY - 30;
+            const size = 60;
+            ctx.shadowColor = '#fffacd'; ctx.shadowBlur = 40; ctx.fillStyle = '#fffacd';
+            ctx.beginPath();
+            for(let i = 0; i < 8; i++) {
+                ctx.lineTo(x + Math.cos((18 + i * 45)/180 * Math.PI) * size/2, 
+                           y + Math.sin((18 + i * 45)/180 * Math.PI) * size/2);
+                ctx.lineTo(x + Math.cos((53 + i * 45)/180 * Math.PI) * size/5, 
+                           y + Math.sin((53 + i * 45)/180 * Math.PI) * size/5);
+            }
+            ctx.closePath(); ctx.fill();
+            ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(x, y, 10, 0, Math.PI*2); ctx.fill();
+            ctx.shadowBlur = 0;
+        }
+
+        // --- 布局逻辑 ---
+        function generateTreeLayout(count, width, height) {
+            const positions = [];
+            const levels = Math.ceil(Math.sqrt(count * 2.2));
+            const topY = height * 0.15;
+            const bottomY = height * 0.82;
+            const treeHeight = bottomY - topY;
+            let currentCount = 0;
+            for (let i = 0; i < levels && currentCount < count; i++) {
+                const y = topY + (i / levels) * treeHeight;
+                const levelWidth = (i / levels) * (width * 0.55) + 40; 
+                const itemsInRow = Math.min(i + 1, count - currentCount);
+                if (itemsInRow <= 0) break;
+                for (let j = 0; j < itemsInRow; j++) {
+                    const x = (width / 2) - (levelWidth / 2) + (j / (itemsInRow > 1 ? itemsInRow - 1 : 1)) * levelWidth;
+                    positions.push({ x: x + (Math.random() - 0.5) * 20, y: y + (Math.random() - 0.5) * 20 });
+                    currentCount++;
+                }
+            }
+            return positions;
+        }
+
+        async function setupCamera() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 320, height: 240 } });
+                video.srcObject = stream;
+                return new Promise(resolve => { video.onloadedmetadata = () => resolve(video); });
+            } catch (e) {
+                gestureStateEl.innerText = "无摄像头";
+                alert("如需手势功能，请允许摄像头权限。");
+            }
+        }
+
+        async function loadModel() {
+            detector = await handPoseDetection.createDetector(
+                handPoseDetection.SupportedModels.MediaPipeHands,
+                { runtime: 'mediapipe', solutionPath: 'https://cdn.jsdelivr.net/npm/@mediapipe/hands' }
+            );
+            
+            // 数据库加载完毕后，隐藏Loading
+            loadingEl.style.display = 'none';
+            gestureStateEl.innerText = "准备就绪";
+            initSnow();
+            animate();
+            detectHands();
+        }
+
+        async function detectHands() {
+            if (detector && video.readyState === 4 && !magnifiedItem) {
+                try {
+                    const hands = await detector.estimateHands(video);
+                    if (hands.length > 0) {
+                        const kp = hands[0].keypoints;
+                        const dist = Math.sqrt(Math.pow(kp[4].x - kp[20].x, 2) + Math.pow(kp[4].y - kp[20].y, 2));
+                        if (dist < 30) { 
+                            mode = 'tree'; gestureStateEl.innerText = "✊ 聚合"; gestureStateEl.style.color = "#2ecc71";
+                        } else if (dist > 60) {
+                            mode = 'scatter'; gestureStateEl.innerText = "✋ 散开"; gestureStateEl.style.color = "#3498db";
+                        }
+                    } else {
+                        gestureStateEl.innerText = "检测中..."; gestureStateEl.style.color = "#aaa";
+                    }
+                } catch (error) { console.error(error); }
+            }
+            setTimeout(() => requestAnimationFrame(detectHands), 150);
+        }
+
+        // --- 图片处理核心 ---
+        function processFile(file, shouldSave = true) {
+            return new Promise((resolve) => {
+                const img = new Image();
+                img.src = URL.createObjectURL(file);
+                img.onload = () => {
+                    if (shouldSave) saveToDB(file); // 仅在是新上传时保存
+                    items.push({
+                        type: 'photo',
+                        img: img,
+                        brightness: getBrightness(img),
+                        x: Math.random() * window.innerWidth,
+                        y: Math.random() * window.innerHeight,
+                        rotation: (Math.random() - 0.5) * 0.4,
+                        scatterX: Math.random() * window.innerWidth,
+                        scatterY: Math.random() * window.innerHeight,
+                        treeX: 0, treeY: 0,
+                        color: `hsl(${Math.random()*360}, 70%, 60%)`
+                    });
+                    resolve();
+                };
+            });
+        }
+
+        document.getElementById('file-input').addEventListener('change', async (e) => {
+            const files = Array.from(e.target.files);
+            if(files.length === 0) return;
+            // 不要清空 items，而是追加
+            loadingEl.style.display = 'flex';
+            loadingEl.querySelector('div:last-child').innerText = "正在处理新照片...";
+            
+            for (let file of files) {
+                await processFile(file, true);
+            }
+            
+            regenerateLayout();
+            loadingEl.style.display = 'none';
+        });
+
+        function addDecorations() {
+            // 先清除旧的装饰品，只保留照片
+            items = items.filter(i => i.type === 'photo');
+            for (let i = 0; i < DECORATION_COUNT; i++) {
+                const isStar = Math.random() < 0.6;
+                items.push({
+                    type: isStar ? 'star' : 'heart',
+                    color: isStar ? '#ffd700' : '#ff4757',
+                    x: Math.random() * window.innerWidth,
+                    y: Math.random() * window.innerHeight,
+                    rotation: (Math.random() - 0.5) * 0.5,
+                    scatterX: Math.random() * window.innerWidth,
+                    scatterY: Math.random() * window.innerHeight,
+                    treeX: 0, treeY: 0
+                });
+            }
+        }
+
+        function regenerateLayout() {
+            addDecorations();
+            itemsCount = items.filter(i => i.type === 'photo').length;
+            itemCountEl.innerText = itemsCount;
+
+            items.sort((a, b) => {
+                if (a.type === 'photo' && b.type !== 'photo') return -1;
+                if (a.type !== 'photo' && b.type === 'photo') return 1;
+                if (a.type === 'photo') return b.brightness - a.brightness;
+                return 0;
+            });
+            let treePositions = generateTreeLayout(items.length, window.innerWidth, window.innerHeight);
+            treePositions = shuffleArray(treePositions);
+            items.forEach((p, i) => {
+                if (treePositions[i]) { p.treeX = treePositions[i].x; p.treeY = treePositions[i].y; }
+            });
+        }
+
+        // --- 交互 ---
+        canvas.addEventListener('click', (e) => {
+            if (magnifiedItem) {
+                magnifiedItem = null; magnifyOverlay.style.display = 'none'; return;
+            }
+            const rect = canvas.getBoundingClientRect();
+            const clickX = e.clientX - rect.left;
+            const clickY = e.clientY - rect.top;
+            for (let i = items.length - 1; i >= 0; i--) {
+                const item = items[i];
+                if (item.type === 'photo') {
+                    const dx = item.x - clickX; const dy = item.y - clickY;
+                    if (dx*dx + dy*dy < 900) {
+                        magnifiedItem = item; magnifyImg.src = item.img.src;
+                        magnifyOverlay.style.display = 'flex'; break;
+                    }
+                }
+            }
+        });
+        magnifyOverlay.addEventListener('click', () => { magnifiedItem = null; magnifyOverlay.style.display = 'none'; });
+
+        // --- 动画循环 ---
+        function animate() {
+            if (magnifiedItem) { requestAnimationFrame(animate); return; }
+            if (canvas.width !== window.innerWidth || canvas.height !== window.innerHeight) {
+                canvas.width = window.innerWidth; canvas.height = window.innerHeight;
+                if (items.length > 0) regenerateLayout();
+            }
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            snowflakes.forEach(snow => { snow.update(); snow.draw(); });
+            drawTrunk(canvas.width, canvas.height);
+            drawTopStar(canvas.width, canvas.height);
+
+            const isTreeMode = mode === 'tree';
+            const targetSize = isTreeMode ? PHOTO_SIZE : PHOTO_SIZE * 1.5;
+
+            items.forEach(item => {
+                const targetX = isTreeMode ? item.treeX : item.scatterX;
+                const targetY = isTreeMode ? item.treeY : item.scatterY;
+                item.x = lerp(item.x, targetX, SPEED_FACTOR);
+                item.y = lerp(item.y, targetY, SPEED_FACTOR);
+
+                ctx.save(); ctx.translate(item.x, item.y); ctx.rotate(item.rotation);
+                if (isTreeMode) { ctx.shadowBlur = 15; ctx.shadowColor = item.color; } else { ctx.shadowBlur = 0; }
+
+                if (item.type === 'photo') {
+                    const currentSize = lerp(item._currentSize || targetSize, targetSize, SPEED_FACTOR);
+                    item._currentSize = currentSize;
+                    ctx.fillStyle = '#fff'; ctx.fillRect(-currentSize/2 - 2, -currentSize/2 - 2, currentSize + 4, currentSize + 4);
+                    ctx.drawImage(item.img, -currentSize/2, -currentSize/2, currentSize, currentSize);
+                    if(isTreeMode) { ctx.fillStyle = `rgba(255,255,200, 0.1)`; ctx.fillRect(-currentSize/2, -currentSize/2, currentSize, currentSize); }
+                } else {
+                    const decoSize = targetSize * 0.6;
+                    if (item.type === 'star') { ctx.fillStyle = item.color; ctx.beginPath(); ctx.arc(0,0,decoSize/2,0,Math.PI*2); ctx.fill(); }
+                    if (item.type === 'heart') { ctx.fillStyle = item.color; ctx.beginPath(); ctx.arc(0,0,decoSize/2,0,Math.PI*2); ctx.fill(); }
+                }
+                ctx.restore();
+            });
+            requestAnimationFrame(animate);
+        }
+
+        window.onload = async () => {
+            // 1. 初始化数据库
+            await initDB();
+            
+            // 2. 尝试从数据库加载旧照片
+            const savedFiles = await loadFromDB();
+            if (savedFiles.length > 0) {
+                loadingEl.querySelector('div:last-child').innerText = `发现 ${savedFiles.length} 张记忆照片...`;
+                for (let file of savedFiles) {
+                    await processFile(file, false); // false = 不要再次保存，因为已经在库里了
+                }
+                regenerateLayout();
+            }
+
+            // 3. 启动摄像头和AI
+            await setupCamera();
+            await loadModel();
+        };
+
+    </script>
+</body>
+</html>
