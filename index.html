@@ -144,6 +144,15 @@
         .playing .bar:nth-child(3) { animation-duration: 0.8s; }
         @keyframes sound { 0% { height: 3px; } 100% { height: 15px; } }
 
+        /* 闪烁动画关键帧 */
+        @keyframes blink {
+            0% { opacity: 1; filter: brightness(1); }
+            50% { opacity: 0.7; filter: brightness(1.5); }
+            100% { opacity: 1; filter: brightness(1); }
+        }
+        .blink {
+            animation: blink 1.5s infinite ease-in-out;
+        }
     </style>
 </head>
 <body>
@@ -199,7 +208,7 @@
 
     <audio id="bgm" loop>
         <source src="https://cdn.pixabay.com/download/audio/2022/11/22/audio_febc508520.mp3?filename=christmas-background-music-124970.mp3" type="audio/mpeg">
-    </audio>
+    
 
     <script>
         // --- 1. 数据库配置 (IndexedDB) ---
@@ -283,9 +292,16 @@
         let magnifiedItem = null;
 
         const PHOTO_SIZE = 55;
-        const DECORATION_COUNT = 40; 
+        // 增加装饰数量
+        const DECORATION_COUNT = 120; 
         const SPEED_FACTOR = 0.08;
-        const SNOW_COUNT = 150;
+        // 增加雪花数量
+        const SNOW_COUNT = 300;
+        // 定义旋转速度
+        const ROTATE_SPEED = 0.02;
+        // 闪烁相关配置
+        const BLINK_INTERVAL = 1500;
+        let blinkTime = 0;
 
         // --- 雪花系统 ---
         class Snowflake {
@@ -341,6 +357,16 @@
                 musicBtn.innerHTML = '<div class="music-bars"><div class="bar"></div><div class="bar"></div><div class="bar"></div></div> 音乐';
             }
         }
+        // 获取闪烁亮度值
+        function getBlinkBrightness(baseBrightness) {
+            const time = Date.now() % BLINK_INTERVAL;
+            const progress = time / BLINK_INTERVAL;
+            if (progress < 0.5) {
+                return baseBrightness + (1 - baseBrightness) * progress * 2;
+            } else {
+                return baseBrightness + (1 - baseBrightness) * (1 - (progress - 0.5) * 2);
+            }
+        }
 
         // --- 绘制函数 ---
         function drawTrunk(width, height) {
@@ -363,7 +389,14 @@
             const x = width / 2;
             const y = topY - 30;
             const size = 60;
-            ctx.shadowColor = '#fffacd'; ctx.shadowBlur = 40; ctx.fillStyle = '#fffacd';
+            
+            // 顶部星星闪烁效果
+            const blinkBrightness = getBlinkBrightness(0.8);
+            const shadowBlur = 20 + blinkBrightness * 20;
+            ctx.shadowColor = `rgba(255, 218, 121, ${blinkBrightness})`; 
+            ctx.shadowBlur = shadowBlur; 
+            ctx.fillStyle = `rgba(255, 218, 121, ${blinkBrightness})`;
+            
             ctx.beginPath();
             for(let i = 0; i < 8; i++) {
                 ctx.lineTo(x + Math.cos((18 + i * 45)/180 * Math.PI) * size/2, 
@@ -372,8 +405,93 @@
                            y + Math.sin((53 + i * 45)/180 * Math.PI) * size/5);
             }
             ctx.closePath(); ctx.fill();
-            ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(x, y, 10, 0, Math.PI*2); ctx.fill();
+            
+            // 星星中心亮点
+            ctx.fillStyle = `rgba(255, 255, 255, ${blinkBrightness})`; 
+            ctx.beginPath(); ctx.arc(x, y, 10, 0, Math.PI*2); ctx.fill();
             ctx.shadowBlur = 0;
+        }
+
+        // 绘制星星
+        function drawStar(x, y, size, color, blinkFactor) {
+            // 应用闪烁亮度
+            const [r, g, b] = hexToRgb(color);
+            ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${blinkFactor})`;
+            ctx.beginPath();
+            for (let i = 0; i < 5; i++) {
+                ctx.lineTo(
+                    x + Math.cos((i * 72 - 90) * Math.PI / 180) * size,
+                    y + Math.sin((i * 72 - 90) * Math.PI / 180) * size
+                );
+                ctx.lineTo(
+                    x + Math.cos((i * 72 + 36 - 90) * Math.PI / 180) * size / 2.5,
+                    y + Math.sin((i * 72 + 36 - 90) * Math.PI / 180) * size / 2.5
+                );
+            }
+            ctx.closePath();
+            ctx.fill();
+            
+            // 星星闪烁光晕
+            ctx.shadowColor = color;
+            ctx.shadowBlur = 10 * blinkFactor;
+            ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${blinkFactor * 0.3})`;
+            ctx.beginPath();
+            ctx.arc(x, y, size * 0.8, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.shadowBlur = 0;
+        }
+
+        // 绘制爱心
+        function drawHeart(x, y, size, color, blinkFactor) {
+            // 应用闪烁亮度
+            const [r, g, b] = hexToRgb(color);
+            ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${blinkFactor})`;
+            ctx.beginPath();
+            ctx.moveTo(x, y + size / 4);
+            ctx.bezierCurveTo(x - size / 2, y - size / 2, x - size, y + size / 4, x, y + size);
+            ctx.bezierCurveTo(x + size, y + size / 4, x + size / 2, y - size / 2, x, y + size / 4);
+            ctx.closePath();
+            ctx.fill();
+            
+            // 爱心闪烁光晕
+            ctx.shadowColor = color;
+            ctx.shadowBlur = 8 * blinkFactor;
+            ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${blinkFactor * 0.2})`;
+            ctx.beginPath();
+            ctx.arc(x, y, size * 0.6, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.shadowBlur = 0;
+        }
+
+        // 绘制雪花装饰
+        function drawSnowflakeDeco(x, y, size, color, blinkFactor) {
+            const [r, g, b] = hexToRgb(color);
+            ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${blinkFactor})`;
+            ctx.beginPath();
+            ctx.arc(0, 0, size/2, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // 雪花闪烁光晕
+            ctx.shadowColor = color;
+            ctx.shadowBlur = 6 * blinkFactor;
+            ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${blinkFactor * 0.2})`;
+            ctx.beginPath();
+            ctx.arc(0, 0, size/2 * 1.2, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.shadowBlur = 0;
+        }
+
+        // 十六进制颜色转RGB
+        function hexToRgb(hex) {
+            // 处理缩写颜色
+            const shorthandRegex = /^#?([a-f\d])([a-f\d])([a-f\d])$/i;
+            hex = hex.replace(shorthandRegex, (m, r, g, b) => r + r + g + g + b + b);
+            const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+            return result ? [
+                parseInt(result[1], 16),
+                parseInt(result[2], 16),
+                parseInt(result[3], 16)
+            ] : [255, 255, 255];
         }
 
         // --- 布局逻辑 ---
@@ -460,7 +578,9 @@
                         scatterX: Math.random() * window.innerWidth,
                         scatterY: Math.random() * window.innerHeight,
                         treeX: 0, treeY: 0,
-                        color: `hsl(${Math.random()*360}, 70%, 60%)`
+                        color: `hsl(${Math.random()*360}, 70%, 60%)`,
+                        // 随机闪烁频率
+                        blinkRate: Math.random() * 0.5 + 0.5
                     });
                     resolve();
                 };
@@ -485,17 +605,25 @@
         function addDecorations() {
             // 先清除旧的装饰品，只保留照片
             items = items.filter(i => i.type === 'photo');
+            // 增加星星、爱心种类和数量
+            const decorationTypes = ['star', 'heart', 'snowflake'];
             for (let i = 0; i < DECORATION_COUNT; i++) {
-                const isStar = Math.random() < 0.6;
+                const type = decorationTypes[Math.floor(Math.random() * decorationTypes.length)];
+                let color = '#ffd700';
+                if (type === 'heart') color = `hsl(${Math.random()*30+330}, 80%, 60%)`;
+                if (type === 'snowflake') color = `hsl(${Math.random()*60+200}, 100%, 90%)`;
+                
                 items.push({
-                    type: isStar ? 'star' : 'heart',
-                    color: isStar ? '#ffd700' : '#ff4757',
+                    type: type,
+                    color: color,
                     x: Math.random() * window.innerWidth,
                     y: Math.random() * window.innerHeight,
                     rotation: (Math.random() - 0.5) * 0.5,
                     scatterX: Math.random() * window.innerWidth,
                     scatterY: Math.random() * window.innerHeight,
-                    treeX: 0, treeY: 0
+                    treeX: 0, treeY: 0,
+                    // 随机闪烁频率
+                    blinkRate: Math.random() * 0.5 + 0.5
                 });
             }
         }
@@ -553,6 +681,8 @@
 
             const isTreeMode = mode === 'tree';
             const targetSize = isTreeMode ? PHOTO_SIZE : PHOTO_SIZE * 1.5;
+            // 更新闪烁时间
+            blinkTime = (blinkTime + 1) % BLINK_INTERVAL;
 
             items.forEach(item => {
                 const targetX = isTreeMode ? item.treeX : item.scatterX;
@@ -560,19 +690,42 @@
                 item.x = lerp(item.x, targetX, SPEED_FACTOR);
                 item.y = lerp(item.y, targetY, SPEED_FACTOR);
 
+                // 散开时顺时针旋转
+                if (!isTreeMode) {
+                    item.rotation += ROTATE_SPEED;
+                }
+
+                // 计算闪烁因子
+                const blinkProgress = (blinkTime / BLINK_INTERVAL) * Math.PI * 2;
+                const blinkFactor = Math.sin(blinkProgress * item.blinkRate) * 0.3 + 0.7;
+
                 ctx.save(); ctx.translate(item.x, item.y); ctx.rotate(item.rotation);
-                if (isTreeMode) { ctx.shadowBlur = 15; ctx.shadowColor = item.color; } else { ctx.shadowBlur = 0; }
+                if (isTreeMode) { 
+                    ctx.shadowBlur = 15 * blinkFactor; 
+                    ctx.shadowColor = item.color; 
+                } else { 
+                    ctx.shadowBlur = 0; 
+                }
 
                 if (item.type === 'photo') {
                     const currentSize = lerp(item._currentSize || targetSize, targetSize, SPEED_FACTOR);
                     item._currentSize = currentSize;
-                    ctx.fillStyle = '#fff'; ctx.fillRect(-currentSize/2 - 2, -currentSize/2 - 2, currentSize + 4, currentSize + 4);
+                    ctx.fillStyle = `rgba(255, 255, 255, ${blinkFactor})`; 
+                    ctx.fillRect(-currentSize/2 - 2, -currentSize/2 - 2, currentSize + 4, currentSize + 4);
                     ctx.drawImage(item.img, -currentSize/2, -currentSize/2, currentSize, currentSize);
-                    if(isTreeMode) { ctx.fillStyle = `rgba(255,255,200, 0.1)`; ctx.fillRect(-currentSize/2, -currentSize/2, currentSize, currentSize); }
-                } else {
+                    if(isTreeMode) { 
+                        ctx.fillStyle = `rgba(255,255,200, ${blinkFactor * 0.1})`; 
+                        ctx.fillRect(-currentSize/2, -currentSize/2, currentSize, currentSize); 
+                    }
+                } else if (item.type === 'star') {
                     const decoSize = targetSize * 0.6;
-                    if (item.type === 'star') { ctx.fillStyle = item.color; ctx.beginPath(); ctx.arc(0,0,decoSize/2,0,Math.PI*2); ctx.fill(); }
-                    if (item.type === 'heart') { ctx.fillStyle = item.color; ctx.beginPath(); ctx.arc(0,0,decoSize/2,0,Math.PI*2); ctx.fill(); }
+                    drawStar(0, 0, decoSize/2, item.color, blinkFactor);
+                } else if (item.type === 'heart') {
+                    const decoSize = targetSize * 0.6;
+                    drawHeart(0, 0, decoSize/2, item.color, blinkFactor);
+                } else if (item.type === 'snowflake') {
+                    const decoSize = targetSize * 0.5;
+                    drawSnowflakeDeco(0, 0, decoSize, item.color, blinkFactor);
                 }
                 ctx.restore();
             });
@@ -597,9 +750,7 @@
             await setupCamera();
             await loadModel();
         };
-
     </script>
 </body>
-
 </html>
 
